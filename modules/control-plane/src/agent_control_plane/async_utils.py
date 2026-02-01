@@ -158,6 +158,5 @@ async def process_with_bounded_queue(
     # Wait for workers to finish
     await asyncio.gather(*workers)
     
-    # Return results in original order
-    # Note: results may be out of order; sort if needed
+    # Return just the results, not the tuples
     return [result for _, result in results]
