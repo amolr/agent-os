@@ -1,0 +1,412 @@
+\documentclass[11pt]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[margin=1in]{geometry}
+\usepackage{natbib}
+\usepackage{subcaption}
+
+% Hyperref setup
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue
+}
+
+% Code listing style
+\lstdefinestyle{python}{
+    language=Python,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    stringstyle=\color{red},
+    commentstyle=\color{gray},
+    numbers=left,
+    numberstyle=\tiny,
+    breaklines=true,
+    frame=single,
+    showstringspaces=false
+}
+
+% Title
+\title{\textbf{EMK: Episodic Memory Kernel}\\
+\large A Minimalist Storage Primitive for AI Agent Experience}
+
+\author{
+    Imran Siddique\\
+    Principal Group Engineering Manager\\
+    Microsoft\\
+    \texttt{imran.siddique@microsoft.com}
+}
+
+\date{February 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We present \textbf{EMK} (Episodic Memory Kernel), a lightweight, immutable storage layer for AI agent experiences. As autonomous agents become increasingly prevalent, the need for structured, queryable memory of past actions and outcomes becomes critical. EMK provides a minimalist yet powerful primitive that captures the complete agent experience cycle—\textit{Goal} $\rightarrow$ \textit{Action} $\rightarrow$ \textit{Result} $\rightarrow$ \textit{Reflection}—in an append-only ledger with $O(1)$ write complexity and $O(n)$ retrieval with optional vector similarity search. We demonstrate that EMK achieves \textbf{0.036ms} episode creation latency (27,694 ops/sec) and \textbf{652 write ops/sec} throughput while maintaining full audit trails, making it suitable for production agent systems. Unlike existing agent memory systems that conflate storage with summarization, EMK provides a clean separation of concerns, enabling higher-level memory architectures to be built on a solid foundation.
+\end{abstract}
+
+\section{Introduction}
+
+\subsection{Motivation}
+
+The proliferation of Large Language Model (LLM) powered autonomous agents~\citep{langchain2023, autogpt2023, crewai2023} has created an urgent need for robust memory systems. Current approaches~\citep{memgpt2023, pink2025episodic} often conflate storage with summarization, leading to systems that are both opinionated and heavyweight. This creates several problems:
+
+\begin{enumerate}
+    \item \textbf{Lack of Auditability}: When memory is automatically summarized or compressed, the original experience is lost, making forensic analysis impossible.
+    \item \textbf{Tight Coupling}: Memory systems that include retrieval, summarization, and storage logic are difficult to adapt to new use cases.
+    \item \textbf{Heavy Dependencies}: Many agent frameworks require extensive dependency chains for basic memory functionality.
+\end{enumerate}
+
+EMK addresses these issues by providing a ``Layer 1'' primitive that focuses solely on \textit{storage and retrieval}, analogous to how POSIX provides file system primitives without dictating how files should be organized.
+
+\subsection{The Case for Episodic Memory}
+
+Cognitive science distinguishes between \textit{episodic} and \textit{semantic} memory~\citep{tulving1972episodic}. Episodic memory captures specific experiences (``I debugged this error yesterday''), while semantic memory stores general facts (``Python uses indentation for blocks''). Most agent memory systems focus exclusively on semantic memory (embeddings of general knowledge), neglecting the episodic dimension.
+
+However, episodic memory is critical for:
+\begin{itemize}
+    \item \textbf{Learning from Experience}: Agents need to recall \textit{what happened} in specific situations to avoid repeating mistakes.
+    \item \textbf{Temporal Reasoning}: Understanding cause-and-effect requires chronological records.
+    \item \textbf{Explainability}: Stakeholders need to audit \textit{why} an agent made a decision by reviewing its past experiences.
+\end{itemize}
+
+\subsection{Contributions}
+
+Our contributions are:
+
+\begin{enumerate}
+    \item \textbf{EMK Schema} (Section~\ref{sec:schema}): A minimal, immutable data structure for agent experiences with content-addressable IDs.
+    \item \textbf{Pluggable Storage} (Section~\ref{sec:storage}): Abstract interface with FileAdapter (zero dependencies) and ChromaDB implementations.
+    \item \textbf{Indexer Utilities} (Section~\ref{sec:indexer}): Tag extraction and search text generation for downstream systems.
+    \item \textbf{Reproducible Benchmarks} (Section~\ref{sec:experiments}): Controlled experiments demonstrating sub-millisecond latency and production-grade throughput.
+    \item \textbf{Open Source Implementation}: Publicly available at \url{https://github.com/imran-siddique/emk} with \texttt{pip install emk}.
+\end{enumerate}
+
+\subsection{Design Principles}
+
+EMK is built on four core principles:
+
+\begin{itemize}
+    \item \textbf{Immutability}: Once written, episodes cannot be modified (forensic auditability).
+    \item \textbf{Append-Only}: No deletions, ensuring complete history is preserved.
+    \item \textbf{Minimal Dependencies}: Core requires only \texttt{pydantic} and \texttt{numpy}.
+    \item \textbf{Layer Separation}: EMK \textit{stores}; higher layers (like CaaS~\citep{caas2026}) \textit{summarize and contextualize}.
+\end{itemize}
+
+\section{Related Work}
+
+\subsection{Agent Memory Systems}
+
+Table~\ref{tab:comparison} compares EMK with existing agent memory systems.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcccc}
+\toprule
+\textbf{System} & \textbf{Immutable} & \textbf{Vector Search} & \textbf{Dependencies} \\
+\midrule
+LangChain Memory~\citep{langchain2023} & \texttimes & \checkmark & Heavy \\
+MemGPT~\citep{memgpt2023} & \texttimes & \checkmark & Heavy \\
+AutoGPT Memory~\citep{autogpt2023} & \texttimes & \texttimes & Medium \\
+Mem0~\citep{mem0_2024} & \texttimes & \checkmark & Heavy \\
+\textbf{EMK (Ours)} & \checkmark & \checkmark & Minimal \\
+\bottomrule
+\end{tabular}
+\caption{Comparison of agent memory systems. Only EMK provides true immutability with minimal dependencies.}
+\label{tab:comparison}
+\end{table}
+
+\subsection{Episodic Memory in Cognitive Science}
+
+Tulving's seminal work~\citep{tulving1972episodic} distinguished episodic memory (personal experiences) from semantic memory (general knowledge). Recent research~\citep{pink2025episodic, hatalis2023memory} has highlighted the need for episodic memory in LLM agents, particularly for long-term deployment and continual learning.
+
+\subsection{Immutable Data Structures}
+
+EMK draws inspiration from:
+\begin{itemize}
+    \item \textbf{Event Sourcing}~\citep{fowler2005event}: Storing all state changes as events.
+    \item \textbf{Append-Only Logs}: Kafka~\citep{kreps2011kafka}, Event Store~\citep{eventstore}.
+    \item \textbf{Content-Addressed Storage}: Git~\citep{git}, IPFS~\citep{ipfs2014}.
+\end{itemize}
+
+By using SHA-256 content hashing for episode IDs, EMK achieves content-addressability and natural deduplication.
+
+\section{Methodology}
+
+\subsection{System Architecture}
+
+Figure~\ref{fig:architecture} shows the EMK system architecture. Agents create episodes that are stored via the EMK interface. Storage backends (FileAdapter or ChromaDB) handle persistence, while higher-level systems like CaaS consume episodes for context management.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.8\textwidth]{figures/fig1_architecture.pdf}
+\caption{EMK system architecture showing the separation between agent actions, storage primitives, and higher-level context services.}
+\label{fig:architecture}
+\end{figure}
+
+\subsection{The Episode Schema}
+\label{sec:schema}
+
+An episode captures the complete agent experience cycle using the Goal-Action-Result-Reflection (GARR) pattern:
+
+\begin{lstlisting}[style=python]
+from pydantic import BaseModel, Field
+from datetime import datetime
+from typing import Dict, Any
+
+class Episode(BaseModel, frozen=True):
+    goal: str        # What the agent intended
+    action: str      # What the agent did
+    result: str      # What happened
+    reflection: str  # What the agent learned
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    episode_id: str  # SHA-256 content hash
+\end{lstlisting}
+
+\textbf{Implementation Reference:} \texttt{emk/schema.py}, lines 16-89
+
+Key design decisions:
+
+\begin{itemize}
+    \item \textbf{Pydantic \texttt{frozen=True}}: Ensures true immutability at the Python level.
+    \item \textbf{SHA-256 Hash}: Episode IDs are deterministic, content-addressable identifiers computed from \texttt{goal + action + result + reflection}.
+    \item \textbf{UTC Timestamps}: All timestamps use timezone-aware UTC for global consistency.
+    \item \textbf{Extensible Metadata}: Arbitrary key-value pairs for domain-specific context.
+\end{itemize}
+
+Figure~\ref{fig:schema} illustrates the episode schema structure.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.65\textwidth]{figures/fig5_schema.pdf}
+\caption{Episode schema showing the GARR pattern with metadata and content-addressable IDs.}
+\label{fig:schema}
+\end{figure}
+
+\subsection{The VectorStoreAdapter Interface}
+\label{sec:storage}
+
+The \texttt{VectorStoreAdapter} defines the contract for all storage backends:
+
+\begin{algorithm}
+\caption{Episode Storage Interface}
+\begin{algorithmic}[1]
+\Function{Store}{$episode$, $embedding$}
+    \State Serialize $episode$ to storage
+    \State \textbf{return} $episode\_id$
+\EndFunction
+\Function{Retrieve}{$query\_embedding$, $filters$, $limit$}
+    \State Search episodes by embedding or metadata
+    \State \textbf{return} $episodes[]$
+\EndFunction
+\Function{GetById}{$episode\_id$}
+    \State Lookup episode by ID
+    \State \textbf{return} $episode$ or $None$
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+\textbf{Implementation Reference:} \texttt{emk/store.py}, lines 19-66
+
+\subsubsection{FileAdapter (Zero Dependencies)}
+
+The FileAdapter stores episodes in JSONL (JSON Lines) format:
+
+\begin{itemize}
+    \item \textbf{Human-Readable}: Text files that can be inspected with standard tools.
+    \item \textbf{Append-Only}: File writes are \texttt{O(1)} using append mode.
+    \item \textbf{Metadata Filtering}: Python-level filtering without vector search.
+    \item \textbf{Use Case}: Local development, logging, audit trails.
+\end{itemize}
+
+\textbf{Implementation Reference:} \texttt{emk/store.py}, lines 69-170
+
+\subsubsection{ChromaDBAdapter (Optional)}
+
+For production deployments requiring semantic search:
+
+\begin{itemize}
+    \item \textbf{Embedding-Based Search}: K-nearest neighbor retrieval.
+    \item \textbf{Persistent or In-Memory}: Configurable persistence.
+    \item \textbf{Hybrid Filtering}: Combines metadata filters with vector similarity.
+    \item \textbf{Use Case}: Production systems with large episode databases.
+\end{itemize}
+
+\textbf{Implementation Reference:} \texttt{emk/store.py}, lines 175+
+
+\subsection{The Indexer}
+\label{sec:indexer}
+
+The Indexer provides utilities for making episodes searchable without coupling to specific embedding models:
+
+\begin{enumerate}
+    \item \textbf{Tag Extraction}: Stop-word removal, keyword extraction using TF-IDF.
+    \item \textbf{Search Text Generation}: Concatenated representation for downstream embeddings.
+    \item \textbf{Metadata Enrichment}: Auto-generated tags and length metrics.
+\end{enumerate}
+
+\textbf{Implementation Reference:} \texttt{emk/indexer.py}, lines 1-130
+
+\section{Experiments}
+\label{sec:experiments}
+
+\subsection{Experimental Setup}
+
+All experiments use:
+
+\begin{itemize}
+    \item \textbf{Hardware}: Intel Core i7-12th Gen, 16GB RAM, Windows 11
+    \item \textbf{Software}: Python 3.13, emk v0.1.0
+    \item \textbf{Seed}: 42 (for reproducibility)
+    \item \textbf{Episodes}: 1,000 synthetic episodes generated deterministically
+\end{itemize}
+
+\textbf{Reproduction:} \texttt{python experiments/reproduce\_results.py}
+
+All results are available in \texttt{experiments/results.json}.
+
+\subsection{Benchmark Results}
+
+Table~\ref{tab:benchmarks} shows the performance of each EMK operation.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Operation} & \textbf{Mean (ms)} & \textbf{Std Dev (ms)} & \textbf{Ops/sec} \\
+\midrule
+Episode Creation & 0.036 & 0.069 & 27,694 \\
+Storage Write (File) & 1.53 & 1.01 & 652 \\
+Retrieval (Filter) & 25.82 & 9.17 & 39 \\
+Tag Generation & 0.088 & 0.084 & 11,346 \\
+\bottomrule
+\end{tabular}
+\caption{EMK performance benchmarks. Episode creation is extremely fast due to in-memory Pydantic validation. Storage write latency is dominated by disk I/O. Retrieval uses metadata filtering.}
+\label{tab:benchmarks}
+\end{table}
+
+\subsection{Performance Analysis}
+
+Figure~\ref{fig:benchmarks} visualizes the latency distribution for each operation, while Figure~\ref{fig:throughput} shows operations per second.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{figures/fig2_benchmarks.pdf}
+\caption{EMK performance benchmarks showing latency and standard deviation for each operation.}
+\label{fig:benchmarks}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.85\textwidth]{figures/fig3_throughput.pdf}
+\caption{EMK throughput comparison across different operations. Episode creation and tag generation are CPU-bound, while storage writes are I/O-bound.}
+\label{fig:throughput}
+\end{figure}
+
+\textbf{Key Findings}:
+
+\begin{itemize}
+    \item \textbf{Sub-Millisecond Episode Creation}: $0.036$ ms mean latency enables real-time agent logging.
+    \item \textbf{Production-Grade Write Throughput}: $652$ writes/sec sufficient for most agent workloads.
+    \item \textbf{Retrieval Trade-off}: Linear scan ($O(n)$) acceptable for thousands of episodes; ChromaDB recommended for larger datasets.
+\end{itemize}
+
+\subsection{Comparison with Baselines}
+
+Figure~\ref{fig:baseline} compares EMK with alternative storage approaches.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.85\textwidth]{figures/fig4_baseline_comparison.pdf}
+\caption{Comparison of write and read latency across different memory systems. EMK balances flexibility (metadata filtering) with reasonable performance.}
+\label{fig:baseline}
+\end{figure}
+
+\textbf{Observations}:
+
+\begin{itemize}
+    \item \textbf{vs. Raw JSON}: EMK adds schema validation and content hashing with minimal overhead.
+    \item \textbf{vs. SQLite}: EMK's append-only JSONL avoids SQL query overhead for writes.
+    \item \textbf{vs. Redis}: EMK trades in-memory speed for persistent, auditable storage.
+    \item \textbf{vs. LangChain Memory}: EMK is 2-3x faster for writes due to minimal abstraction layers.
+\end{itemize}
+
+\section{Discussion}
+
+\subsection{Design Trade-offs}
+
+\textbf{Immutability vs. Flexibility}: Episodes cannot be updated after creation. This is by design—if an agent learns new information, it creates a \textit{new} episode rather than modifying history. This ensures audit trails remain intact.
+
+\textbf{Simplicity vs. Features}: EMK deliberately excludes summarization, compression, and semantic search (beyond optional ChromaDB integration). These features belong in higher layers like CaaS~\citep{caas2026}.
+
+\textbf{Dependencies vs. Capabilities}: The core EMK requires only \texttt{pydantic} and \texttt{numpy}. ChromaDB is optional, installed via \texttt{pip install emk[chromadb]}.
+
+\subsection{Integration Patterns}
+
+EMK integrates naturally with agent architectures:
+
+\begin{verbatim}
+Agent -> EMK (Storage) -> CaaS (Context) -> Agent
+                │
+                └─> Hugging Face Hub (Public Datasets)
+\end{verbatim}
+
+Agents write episodes to EMK during execution. Higher-level systems (like CaaS) read episodes to construct context windows. Episodes can also be published to Hugging Face Hub for reproducibility~\citep{hf_datasets}.
+
+\subsection{Limitations}
+
+\begin{enumerate}
+    \item \textbf{No Built-in Compression}: Large-scale deployments (millions of episodes) may require external compression.
+    \item \textbf{FileAdapter Linear Scan}: $O(n)$ retrieval acceptable for thousands of episodes, but ChromaDB recommended for larger datasets.
+    \item \textbf{Single-Process Writes}: FileAdapter does not implement distributed locking. For multi-process scenarios, use a database backend.
+\end{enumerate}
+
+\section{Future Work}
+
+\begin{enumerate}
+    \item \textbf{Streaming Support}: Real-time episode ingestion via WebSocket/gRPC.
+    \item \textbf{Distributed Backend}: Kafka or Pulsar adapter for horizontal scaling.
+    \item \textbf{Episode Relationships}: Graph structure for causal chains (``this episode caused that episode'').
+    \item \textbf{Privacy Features}: Differential privacy for sensitive episodes.
+    \item \textbf{Compression}: Delta encoding for similar episodes (e.g., repeated debugging attempts).
+    \item \textbf{Multi-Agent Coordination}: Shared episode stores with access control.
+\end{enumerate}
+
+\section{Conclusion}
+
+EMK provides a foundational primitive for agent memory systems. By embracing immutability and minimalism, it enables higher-level systems to build sophisticated memory architectures without reinventing storage. Our experiments demonstrate that EMK achieves production-grade performance (27,694 ops/sec episode creation, 652 writes/sec to disk) while maintaining a clean separation of concerns.
+
+In a landscape of heavyweight agent frameworks, EMK offers a lightweight alternative inspired by Unix philosophy: \textit{do one thing and do it well}. We hope EMK serves as a building block for the next generation of autonomous agent systems.
+
+\section*{Code Availability}
+
+EMK is open source under the MIT license:
+
+\begin{itemize}
+    \item \textbf{Repository}: \url{https://github.com/imran-siddique/emk}
+    \item \textbf{Installation}: \texttt{pip install emk}
+    \item \textbf{Documentation}: \url{https://emk.readthedocs.io}
+\end{itemize}
+
+\section*{Acknowledgments}
+
+The author thanks the Agent OS community for feedback on early prototypes, and the broader LLM agent research community for inspiring this work.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

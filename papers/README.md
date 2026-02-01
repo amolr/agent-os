@@ -6,6 +6,7 @@
 
 | Document | Description | Status |
 |----------|-------------|--------|
+| [EMK Paper](01-emk/) | **NEW** Episodic Memory Kernel | ✅ arXiv Ready |
 | [ASPLOS 2026 Submission](05-control-plane/) | Main kernel paper | arXiv Ready |
 | [RFC-001: IATP](../docs/rfcs/RFC-001-IATP.md) | Trust protocol spec | Draft |
 | [RFC-002: Agent VFS](../docs/rfcs/RFC-002-Agent-VFS.md) | Filesystem spec | Draft |
@@ -17,6 +18,7 @@ The papers form a coherent research narrative, building from primitives to a com
 
 | # | Paper | Component | Target Venue | Status |
 |---|-------|-----------|--------------|--------|
+| 0 | **EMK** | Episodic Memory Kernel | NeurIPS 2026 / EMNLP 2026 | ✅ arXiv Ready |
 | 1 | **Agent Primitives** | Base failure types | Technical Report | Draft |
 | 2 | **CMVK** | Cross-Model Verification Kernel | NeurIPS 2026 | arXiv Ready |
 | 3 | **CaaS** | Context-as-a-Service | EMNLP 2026 | arXiv Ready |
@@ -31,32 +33,35 @@ The papers form a coherent research narrative, building from primitives to a com
                     │ 01-Primitives│
                     └──────┬───────┘
                            │
-              ┌────────────┼────────────┐
-              │            │            │
-              ▼            ▼            ▼
-        ┌─────────┐  ┌─────────┐  ┌─────────┐
-        │ 02-CMVK │  │ 03-CaaS │  │ 04-IATP │
-        └────┬────┘  └────┬────┘  └────┬────┘
-             │            │            │
-             └────────────┼────────────┘
-                          │
-                          ▼
-                ┌─────────────────┐
-                │05-Control Plane │
-                └────────┬────────┘
-                         │
-                         ▼
-                   ┌──────────┐
-                   │ 06-SCAK  │
-                   └──────────┘
+              ┌────────────┼────────────┬────────────┐
+              │            │            │            │
+              ▼            ▼            ▼            ▼
+        ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐
+        │ 00-EMK  │  │ 02-CMVK │  │ 03-CaaS │  │ 04-IATP │
+        │(Storage)│  │         │  │  (uses  │  │         │
+        └────┬────┘  └────┬────┘  │   EMK)  │  └────┬────┘
+             │            │        └────┬────┘       │
+             │            │             │            │
+             └────────────┴─────────────┼────────────┘
+                                        │
+                                        ▼
+                              ┌─────────────────┐
+                              │05-Control Plane │
+                              └────────┬────────┘
+                                       │
+                                       ▼
+                                 ┌──────────┐
+                                 │ 06-SCAK  │
+                                 └──────────┘
 ```
 
 ## Cross-References
 
 Each paper cites and builds upon the previous work:
 
+- **EMK** provides immutable storage primitive → used by **CaaS** for episodic memory
 - **CMVK** introduces adversarial verification → used by **Control Plane** for policy checks
-- **CaaS** provides context management → used by **SCAK** for semantic memory
+- **CaaS** provides context management (built on EMK) → used by **SCAK** for semantic memory
 - **IATP** defines trust protocols → used by **Control Plane** for inter-agent governance
 - **Control Plane** provides the kernel → extended by **SCAK** for self-correction
 

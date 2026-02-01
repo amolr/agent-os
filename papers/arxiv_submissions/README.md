@@ -6,6 +6,7 @@ Ready-to-upload packages for Agent OS research papers.
 
 | Paper | Tarball | Category | Status |
 |-------|---------|----------|--------|
+| [01-emk](./01-emk/) | Ready for packaging | cs.AI | ✅ **NEW** |
 | [02-cmvk](./02-cmvk/) | `submission.tar` (133 KB) | cs.SE | Ready |
 | [03-caas](./03-caas/) | `submission.tar` (410 KB) | cs.CL | Ready |
 | [05-control-plane](./05-control-plane/) | `submission.tar` (922 KB) | cs.AI | Ready |

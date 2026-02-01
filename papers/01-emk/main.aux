@@ -1,0 +1,71 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{langchain2023,autogpt2023,crewai2023}
+\citation{memgpt2023,pink2025episodic}
+\citation{tulving1972episodic}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.1}Motivation}{1}{subsection.1.1}\protected@file@percent }
+\citation{caas2026}
+\citation{langchain2023}
+\citation{memgpt2023}
+\citation{autogpt2023}
+\citation{mem0_2024}
+\citation{tulving1972episodic}
+\citation{pink2025episodic,hatalis2023memory}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.2}The Case for Episodic Memory}{2}{subsection.1.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.3}Contributions}{2}{subsection.1.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.4}Design Principles}{2}{subsection.1.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Related Work}{2}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Agent Memory Systems}{2}{subsection.2.1}\protected@file@percent }
+\citation{fowler2005event}
+\citation{kreps2011kafka}
+\citation{eventstore}
+\citation{git}
+\citation{ipfs2014}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Comparison of agent memory systems. Only EMK provides true immutability with minimal dependencies.}}{3}{table.caption.1}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{tab:comparison}{{1}{3}{Comparison of agent memory systems. Only EMK provides true immutability with minimal dependencies}{table.caption.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Episodic Memory in Cognitive Science}{3}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Immutable Data Structures}{3}{subsection.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Methodology}{3}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}System Architecture}{3}{subsection.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}The Episode Schema}{3}{subsection.3.2}\protected@file@percent }
+\newlabel{sec:schema}{{3.2}{3}{The Episode Schema}{subsection.3.2}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces EMK system architecture showing the separation between agent actions, storage primitives, and higher-level context services.}}{4}{figure.caption.2}\protected@file@percent }
+\newlabel{fig:architecture}{{1}{4}{EMK system architecture showing the separation between agent actions, storage primitives, and higher-level context services}{figure.caption.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}The VectorStoreAdapter Interface}{4}{subsection.3.3}\protected@file@percent }
+\newlabel{sec:storage}{{3.3}{4}{The VectorStoreAdapter Interface}{subsection.3.3}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.3.1}FileAdapter (Zero Dependencies)}{4}{subsubsection.3.3.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Episode schema showing the GARR pattern with metadata and content-addressable IDs.}}{5}{figure.caption.3}\protected@file@percent }
+\newlabel{fig:schema}{{2}{5}{Episode schema showing the GARR pattern with metadata and content-addressable IDs}{figure.caption.3}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.3.2}ChromaDBAdapter (Optional)}{5}{subsubsection.3.3.2}\protected@file@percent }
+\@writefile{loa}{\contentsline {algorithm}{\numberline {1}{\ignorespaces Episode Storage Interface}}{5}{algorithm.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}The Indexer}{6}{subsection.3.4}\protected@file@percent }
+\newlabel{sec:indexer}{{3.4}{6}{The Indexer}{subsection.3.4}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Experiments}{6}{section.4}\protected@file@percent }
+\newlabel{sec:experiments}{{4}{6}{Experiments}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Experimental Setup}{6}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Benchmark Results}{6}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Performance Analysis}{6}{subsection.4.3}\protected@file@percent }
+\citation{caas2026}
+\citation{hf_datasets}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces EMK performance benchmarks. Episode creation is extremely fast due to in-memory Pydantic validation. Storage write latency is dominated by disk I/O. Retrieval uses metadata filtering.}}{7}{table.caption.4}\protected@file@percent }
+\newlabel{tab:benchmarks}{{2}{7}{EMK performance benchmarks. Episode creation is extremely fast due to in-memory Pydantic validation. Storage write latency is dominated by disk I/O. Retrieval uses metadata filtering}{table.caption.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Comparison with Baselines}{7}{subsection.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Discussion}{7}{section.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Design Trade-offs}{7}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Integration Patterns}{7}{subsection.5.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces EMK performance benchmarks showing latency and standard deviation for each operation.}}{8}{figure.caption.5}\protected@file@percent }
+\newlabel{fig:benchmarks}{{3}{8}{EMK performance benchmarks showing latency and standard deviation for each operation}{figure.caption.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Limitations}{8}{subsection.5.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}Future Work}{8}{section.6}\protected@file@percent }
+\bibstyle{plainnat}
+\bibdata{references}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces EMK throughput comparison across different operations. Episode creation and tag generation are CPU-bound, while storage writes are I/O-bound.}}{9}{figure.caption.6}\protected@file@percent }
+\newlabel{fig:throughput}{{4}{9}{EMK throughput comparison across different operations. Episode creation and tag generation are CPU-bound, while storage writes are I/O-bound}{figure.caption.6}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Conclusion}{9}{section.7}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Comparison of write and read latency across different memory systems. EMK balances flexibility (metadata filtering) with reasonable performance.}}{10}{figure.caption.7}\protected@file@percent }
+\newlabel{fig:baseline}{{5}{10}{Comparison of write and read latency across different memory systems. EMK balances flexibility (metadata filtering) with reasonable performance}{figure.caption.7}{}}
+\gdef \@abspage@last{10}
