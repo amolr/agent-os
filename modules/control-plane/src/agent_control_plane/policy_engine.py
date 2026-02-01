@@ -434,14 +434,15 @@ class PolicyEngine:
         
         quota = self.quotas[agent_id]
         
-        # Try to acquire the semaphore (non-blocking)
-        # If successful, we have a slot; if not, we're at capacity
-        acquired = quota._execution_semaphore.locked() == False
-        if acquired:
-            await quota._execution_semaphore.acquire()
+        # Try to acquire the semaphore with a very short timeout (non-blocking attempt)
+        # Using a small timeout instead of 0 to allow the event loop to process
+        try:
+            await asyncio.wait_for(quota._execution_semaphore.acquire(), timeout=0.001)
             quota.current_executions += 1
-        
-        return acquired
+            return True
+        except asyncio.TimeoutError:
+            # Semaphore is at capacity
+            return False
     
     def release_execution_slot(self, agent_id: str):
         """Release an execution slot for the agent.

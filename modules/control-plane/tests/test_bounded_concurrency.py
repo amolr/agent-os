@@ -33,8 +33,25 @@ class TestBoundedConcurrency(unittest.TestCase):
         
         # Verify semaphore is initialized
         self.assertIsNotNone(quota._execution_semaphore)
-        # Verify semaphore has correct capacity
-        self.assertEqual(quota._execution_semaphore._value, 5)
+        # Test semaphore behavior instead of accessing private _value
+        # Should be able to acquire up to max_concurrent_executions times
+        async def test_semaphore():
+            # Acquire 5 times should succeed
+            for i in range(5):
+                await quota._execution_semaphore.acquire()
+            
+            # 6th acquire should timeout (semaphore at capacity)
+            with self.assertRaises(asyncio.TimeoutError):
+                await asyncio.wait_for(
+                    quota._execution_semaphore.acquire(), 
+                    timeout=0.01
+                )
+            
+            # Release all
+            for i in range(5):
+                quota._execution_semaphore.release()
+        
+        asyncio.run(test_semaphore())
     
     def test_gather_with_concurrency_basic(self):
         """Test gather_with_concurrency executes all tasks"""
@@ -150,14 +167,21 @@ class TestBoundedConcurrency(unittest.TestCase):
             self.assertEqual(quota.current_executions, 2)
             
             # Should NOT be able to acquire third slot (at limit)
-            # Note: The current implementation doesn't properly check locked() status
-            # This test documents the expected behavior
+            acquired3 = await policy.try_acquire_execution_slot("test-agent")
+            self.assertFalse(acquired3)
+            self.assertEqual(quota.current_executions, 2)  # Still at 2
             
             # Release first slot
             policy.release_execution_slot("test-agent")
             self.assertEqual(quota.current_executions, 1)
             
-            # Release second slot
+            # Should now be able to acquire again
+            acquired4 = await policy.try_acquire_execution_slot("test-agent")
+            self.assertTrue(acquired4)
+            self.assertEqual(quota.current_executions, 2)
+            
+            # Clean up - release both slots
+            policy.release_execution_slot("test-agent")
             policy.release_execution_slot("test-agent")
             self.assertEqual(quota.current_executions, 0)
         
