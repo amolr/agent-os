@@ -2892,12 +2892,20 @@ class EnhancedAgentControlPlane:
             
             # Start agents in dependency order
             for group in startup_groups:
-                # Start agents in this group in parallel
+                # Start agents in this group in parallel with bounded concurrency
+                # Limit to 10 concurrent agent starts to prevent resource exhaustion
+                from .async_utils import gather_with_concurrency
+                
                 tasks = []
                 for agent_id in group:
                     tasks.append(self._start_agent(agent_id))
                 
-                group_results = await asyncio.gather(*tasks, return_exceptions=True)
+                # Use bounded concurrency (max 10 concurrent agent starts)
+                group_results = await gather_with_concurrency(
+                    10,  # Max concurrent agent starts
+                    *tasks,
+                    return_exceptions=True
+                )
                 
                 for agent_id, res in zip(group, group_results):
                     if isinstance(res, Exception):

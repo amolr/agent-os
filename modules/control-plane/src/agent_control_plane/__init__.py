@@ -276,6 +276,13 @@ from .lifecycle import (
     AgentRegistration,
 )
 
+# Async utilities for bounded concurrency
+from .async_utils import (
+    gather_with_concurrency,
+    gather_with_semaphore,
+    process_with_bounded_queue,
+)
+
 # ========== Kernel Architecture (v0.3.0) ==========
 
 # Signal Handling - POSIX-style signals for agents
@@ -412,6 +419,11 @@ __all__ = [
     # Agent State
     "AgentState",
     "AgentRegistration",
+    
+    # Async Utilities (Bounded Concurrency)
+    "gather_with_concurrency",
+    "gather_with_semaphore",
+    "process_with_bounded_queue",
     
     # ===== Layer 3: Interfaces for Dependency Injection =====
     

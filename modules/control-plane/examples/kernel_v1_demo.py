@@ -39,7 +39,12 @@ async def demo_async_support():
     # Multiple agents can operate concurrently
     print("\n🚀 Testing concurrent agent operations...")
 
-    results = await asyncio.gather(
+    # Import bounded concurrency helper
+    from agent_control_plane.async_utils import gather_with_concurrency
+    
+    # Use bounded gather to limit concurrent executions (max 2 at a time)
+    results = await gather_with_concurrency(
+        2,  # Max 2 concurrent operations
         kernel.intercept_tool_execution_async("agent-1", "read_data", {}),
         kernel.intercept_tool_execution_async("agent-2", "write_report", {}),
         kernel.intercept_tool_execution_async("agent-1", "analyze", {}),
