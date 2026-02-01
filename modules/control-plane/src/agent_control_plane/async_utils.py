@@ -12,7 +12,7 @@ Research Foundations:
 """
 
 import asyncio
-from typing import Any, Awaitable, Iterable, List, TypeVar
+from typing import Any, Awaitable, Callable, Iterable, List, TypeVar
 
 
 T = TypeVar('T')
@@ -93,7 +93,7 @@ async def gather_with_semaphore(
 
 async def process_with_bounded_queue(
     items: Iterable[Any],
-    processor: Awaitable,
+    processor: Callable[[Any], Awaitable[Any]],
     max_workers: int,
     max_queue_size: int = 100
 ) -> List[Any]:
