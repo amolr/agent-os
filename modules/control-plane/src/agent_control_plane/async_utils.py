@@ -125,6 +125,8 @@ async def process_with_bounded_queue(
         )
     """
     queue = asyncio.Queue(maxsize=max_queue_size)
+    # Note: list.append() is safe in asyncio since it's single-threaded
+    # All workers run in the same event loop, so no race conditions
     results = []
     
     async def worker():
@@ -137,6 +139,7 @@ async def process_with_bounded_queue(
             
             try:
                 result = await processor(item)
+                # Safe to append from multiple workers in asyncio
                 results.append((item, result))
             finally:
                 queue.task_done()
