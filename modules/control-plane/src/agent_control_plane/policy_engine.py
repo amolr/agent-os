@@ -23,6 +23,7 @@ from .agent_kernel import ExecutionRequest, ActionType, PolicyRule
 import uuid
 import os
 import re
+import asyncio
 
 
 @dataclass
@@ -134,7 +135,11 @@ class ConditionalPermission:
 
 @dataclass
 class ResourceQuota:
-    """Resource quota for an agent or tenant"""
+    """Resource quota for an agent or tenant
+    
+    Uses asyncio.Semaphore for thread-safe concurrency control to prevent
+    race conditions when checking max_concurrent_executions.
+    """
 
     agent_id: str
     max_requests_per_minute: int = 60
@@ -149,6 +154,14 @@ class ResourceQuota:
     current_executions: int = 0
     last_reset_minute: datetime = field(default_factory=datetime.now)
     last_reset_hour: datetime = field(default_factory=datetime.now)
+    
+    # Semaphore for atomic concurrency control (prevents race conditions)
+    _execution_semaphore: Optional[asyncio.Semaphore] = field(default=None, init=False, repr=False)
+    
+    def __post_init__(self):
+        """Initialize semaphore after dataclass initialization"""
+        # Create semaphore with max_concurrent_executions as the limit
+        self._execution_semaphore = asyncio.Semaphore(self.max_concurrent_executions)
 
 
 @dataclass
@@ -363,7 +376,11 @@ class PolicyEngine:
         return None
 
     def check_rate_limit(self, request: ExecutionRequest) -> bool:
-        """Check if request is within rate limits"""
+        """Check if request is within rate limits
+        
+        Note: This method checks rate limits but does NOT check concurrent executions.
+        Use try_acquire_execution_slot() for atomic concurrency control.
+        """
         agent_id = request.agent_context.agent_id
 
         if agent_id not in self.quotas:
@@ -389,9 +406,6 @@ class PolicyEngine:
         if quota.requests_this_hour >= quota.max_requests_per_hour:
             return False
 
-        if quota.current_executions >= quota.max_concurrent_executions:
-            return False
-
         # Check action type allowed
         if quota.allowed_action_types and request.action_type not in quota.allowed_action_types:
             return False
@@ -401,6 +415,49 @@ class PolicyEngine:
         quota.requests_this_hour += 1
 
         return True
+    
+    async def try_acquire_execution_slot(self, agent_id: str) -> bool:
+        """Try to acquire an execution slot for the agent using semaphore-based backpressure.
+        
+        This method provides atomic concurrency control using asyncio.Semaphore,
+        preventing race conditions in concurrent execution limits.
+        
+        Args:
+            agent_id: The agent requesting an execution slot
+            
+        Returns:
+            True if slot acquired, False if no quota set or already at limit
+        """
+        if agent_id not in self.quotas:
+            # No quota set, allow by default
+            return True
+        
+        quota = self.quotas[agent_id]
+        
+        # Try to acquire the semaphore with a very short timeout (non-blocking attempt)
+        # Using a small timeout instead of 0 to allow the event loop to process
+        try:
+            await asyncio.wait_for(quota._execution_semaphore.acquire(), timeout=0.001)
+            quota.current_executions += 1
+            return True
+        except asyncio.TimeoutError:
+            # Semaphore is at capacity
+            return False
+    
+    def release_execution_slot(self, agent_id: str):
+        """Release an execution slot for the agent.
+        
+        Args:
+            agent_id: The agent releasing an execution slot
+        """
+        if agent_id not in self.quotas:
+            return
+        
+        quota = self.quotas[agent_id]
+        
+        # Release the semaphore
+        quota._execution_semaphore.release()
+        quota.current_executions = max(0, quota.current_executions - 1)
 
     def validate_risk(self, request: ExecutionRequest, risk_score: float) -> bool:
         """Validate request against risk policies"""

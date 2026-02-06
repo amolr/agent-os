@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+#### Performance: Bounded Concurrency and Backpressure (Issue #46)
+
+- **Semaphore-Based Concurrency Control**
+  - `ResourceQuota` now automatically initializes `asyncio.Semaphore` for atomic concurrency control
+  - Prevents race conditions in `max_concurrent_executions` check
+  - `PolicyEngine.try_acquire_execution_slot()` - Async method to atomically acquire execution slot
+  - `PolicyEngine.release_execution_slot()` - Release execution slot after completion
+
+- **Bounded Async Utilities** (`async_utils.py`)
+  - `gather_with_concurrency()` - Drop-in replacement for `asyncio.gather()` with concurrency limit
+  - `gather_with_semaphore()` - Use existing semaphore for concurrency control
+  - `process_with_bounded_queue()` - Process items with bounded work queue pattern
+  - Prevents unbounded resource usage from unlimited coroutine spawning
+
+- **Documentation**
+  - `docs/BOUNDED_CONCURRENCY.md` - Comprehensive guide for bounded concurrency features
+  - Migration guide for existing code
+  - API reference and examples
+
+- **Tests**
+  - `tests/test_bounded_concurrency.py` - 9 comprehensive tests for semaphore and bounded gather
+  - Tests for concurrency limits, exception handling, multi-agent independence
+
+### Changed
+
+- **PolicyEngine.check_rate_limit()**: No longer checks concurrent executions (now handled by semaphore)
+  - Removes race condition in check-then-decrement pattern
+  - Concurrent execution control moved to semaphore-based `try_acquire_execution_slot()`
+
+- **Lifecycle Management**: Updated `lifecycle.py` to use `gather_with_concurrency()`
+  - Agent startup now limited to 10 concurrent starts (prevents resource exhaustion)
+
+- **Examples**: Updated `kernel_v1_demo.py` to demonstrate bounded concurrency
+  - Shows proper usage of `gather_with_concurrency()` in async demos
+
+### Fixed
+
+- **Issue #46**: Race condition in `max_concurrent_executions` check
+  - Replaced check-then-decrement pattern with atomic semaphore acquire/release
+- **Issue #46**: Unbounded `asyncio.gather()` spawning unlimited coroutines
+  - Introduced `gather_with_concurrency()` for bounded execution
+
 ## [1.2.0] - 2026-01-23
 
 ### Added
