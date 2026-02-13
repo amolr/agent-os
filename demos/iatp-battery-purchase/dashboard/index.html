@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IATP Real-World Demo: Battery Purchase</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            surface: '#1e1e2e',
+            card: '#282840',
+            border: '#3b3b5c',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background: #11111b; }
+    @keyframes pulse-line { 0%,100% { opacity: 0.3; } 50% { opacity: 1; } }
+    .pulse-anim { animation: pulse-line 1.2s ease-in-out infinite; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .fade-in { animation: fadeIn 0.3s ease-out; }
+    .scrollbar-thin::-webkit-scrollbar { width: 6px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: #1e1e2e; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: #3b3b5c; border-radius: 3px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #5b5b8c; }
+  </style>
+</head>
+<body class="dark">
+  <div id="root"></div>
+  <script type="text/babel" data-type="module">
+    const { useState, useEffect, useRef, useCallback } = React;
+    const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, ResponsiveContainer } = Recharts;
+
+    // ── Config ──────────────────────────────────────────────
+    const POLL_MS = 2000;
+    const AGENTS = [
+      { id: 'copilot-orchestrator', label: 'Copilot', short: 'COP', port: 8000, sidecarPort: 8001, color: '#3b82f6', bg: 'bg-blue-900/40', border: 'border-blue-500/50', text: 'text-blue-400' },
+      { id: 'payment-agent',        label: 'Payment', short: 'PAY', port: 8010, sidecarPort: 8011, color: '#22c55e', bg: 'bg-green-900/40', border: 'border-green-500/50', text: 'text-green-400' },
+      { id: 'amazon-agent',         label: 'Amazon',  short: 'AMZ', port: 8020, sidecarPort: 8021, color: '#f97316', bg: 'bg-orange-900/40', border: 'border-orange-500/50', text: 'text-orange-400' },
+      { id: 'shipping-agent',       label: 'Shipping', short: 'SHP', port: 8030, sidecarPort: 8031, color: '#a855f7', bg: 'bg-purple-900/40', border: 'border-purple-500/50', text: 'text-purple-400' },
+    ];
+
+    const ACTION_COLORS = {
+      trust_handshake: { bg: 'bg-blue-900/30', border: 'border-blue-500/40', dot: 'bg-blue-400' },
+      authorize:       { bg: 'bg-green-900/30', border: 'border-green-500/40', dot: 'bg-green-400' },
+      capture:         { bg: 'bg-green-900/30', border: 'border-green-500/40', dot: 'bg-green-400' },
+      reserve:         { bg: 'bg-orange-900/30', border: 'border-orange-500/40', dot: 'bg-orange-400' },
+      confirm:         { bg: 'bg-orange-900/30', border: 'border-orange-500/40', dot: 'bg-orange-400' },
+      compensate:      { bg: 'bg-red-900/30', border: 'border-red-500/40', dot: 'bg-red-400' },
+      rollback:        { bg: 'bg-red-900/30', border: 'border-red-500/40', dot: 'bg-red-400' },
+      cancel:          { bg: 'bg-red-900/30', border: 'border-red-500/40', dot: 'bg-red-400' },
+      refund:          { bg: 'bg-red-900/30', border: 'border-red-500/40', dot: 'bg-red-400' },
+      quote:           { bg: 'bg-purple-900/30', border: 'border-purple-500/40', dot: 'bg-purple-400' },
+      label:           { bg: 'bg-purple-900/30', border: 'border-purple-500/40', dot: 'bg-purple-400' },
+      create_label:    { bg: 'bg-purple-900/30', border: 'border-purple-500/40', dot: 'bg-purple-400' },
+    };
+    const DEFAULT_ACTION_COLOR = { bg: 'bg-slate-800/30', border: 'border-slate-500/40', dot: 'bg-slate-400' };
+
+    function getActionColor(action) {
+      const key = Object.keys(ACTION_COLORS).find(k => action?.toLowerCase().includes(k));
+      return key ? ACTION_COLORS[key] : DEFAULT_ACTION_COLOR;
+    }
+
+    // ── Fetch helper ────────────────────────────────────────
+    async function safeFetch(url) {
+      try {
+        const r = await fetch(url, { signal: AbortSignal.timeout(2000) });
+        if (!r.ok) return null;
+        return await r.json();
+      } catch { return null; }
+    }
+
+    // ── Status Badge ────────────────────────────────────────
+    function StatusDot({ online }) {
+      return React.createElement('span', {
+        className: `inline-block w-2.5 h-2.5 rounded-full ${online ? 'bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.6)]' : 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]'}`
+      });
+    }
+
+    // ── Header ──────────────────────────────────────────────
+    function Header({ agentStatus }) {
+      return React.createElement('header', { className: 'bg-card border-b border-border px-6 py-4' },
+        React.createElement('div', { className: 'flex items-center justify-between' },
+          React.createElement('div', null,
+            React.createElement('h1', { className: 'text-2xl font-bold text-white flex items-center gap-3' },
+              '🔋 ',
+              React.createElement('span', { className: 'bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent' }, 'IATP Real-World Demo: Battery Purchase')
+            ),
+            React.createElement('p', { className: 'text-slate-400 text-sm mt-1' }, 'Multi-Party Agent Transaction with Trust Verification')
+          ),
+          React.createElement('div', { className: 'flex items-center gap-4' },
+            ...AGENTS.map(a =>
+              React.createElement('div', { key: a.id, className: 'flex items-center gap-2 text-sm' },
+                React.createElement(StatusDot, { online: agentStatus[a.id] }),
+                React.createElement('span', { className: `${a.text} font-medium` }, a.label)
+              )
+            )
+          )
+        )
+      );
+    }
+
+    // ── Transaction Flow (Left) ─────────────────────────────
+    const FLOW_POSITIONS = [
+      { x: 130, y: 60 },   // Copilot
+      { x: 50, y: 200 },   // Payment
+      { x: 210, y: 200 },  // Amazon
+      { x: 130, y: 340 },  // Shipping
+    ];
+
+    const CONNECTIONS = [
+      { from: 0, to: 1 },
+      { from: 0, to: 2 },
+      { from: 0, to: 3 },
+      { from: 1, to: 2 },
+      { from: 2, to: 3 },
+    ];
+
+    function getAgentStatus(agentId, entries) {
+      if (!entries || entries.length === 0) return 'Idle';
+      const agentEntries = entries.filter(e => e.agent_id === agentId);
+      if (agentEntries.length === 0) return 'Idle';
+      const last = agentEntries[agentEntries.length - 1];
+      const action = last.action?.toLowerCase() || '';
+      if (action.includes('fail') || action.includes('error') || action.includes('compensate') || action.includes('rollback')) return 'Failed';
+      if (action.includes('handshake')) return 'Handshaking';
+      if (action.includes('committed') || action.includes('complete') || action.includes('confirm') || action.includes('capture')) return 'Complete';
+      if (action.includes('start') || action.includes('authorize') || action.includes('reserve') || action.includes('quote')) return 'Processing';
+      return 'Idle';
+    }
+
+    const STATUS_STYLES = {
+      Idle:        { fill: '#64748b', badge: 'bg-slate-600 text-slate-200' },
+      Handshaking: { fill: '#eab308', badge: 'bg-yellow-700 text-yellow-100' },
+      Processing:  { fill: '#eab308', badge: 'bg-yellow-700 text-yellow-100' },
+      Complete:    { fill: '#22c55e', badge: 'bg-green-700 text-green-100' },
+      Failed:      { fill: '#ef4444', badge: 'bg-red-700 text-red-100' },
+    };
+
+    function hasRecentHandshake(entries, fromId, toId) {
+      if (!entries || entries.length === 0) return false;
+      const last5 = entries.slice(-10);
+      return last5.some(e => {
+        const action = e.action?.toLowerCase() || '';
+        const data = JSON.stringify(e.data || {}).toLowerCase();
+        return action.includes('handshake') && (data.includes(fromId) || data.includes(toId) || e.agent_id === fromId || e.agent_id === toId);
+      });
+    }
+
+    function TransactionFlow({ entries, agentStatus: onlineStatus }) {
+      const svgW = 300, svgH = 420;
+      return React.createElement('div', { className: 'bg-card rounded-xl border border-border p-4 h-full flex flex-col' },
+        React.createElement('h2', { className: 'text-lg font-semibold text-white mb-3 flex items-center gap-2' }, '🔗 Transaction Flow'),
+        React.createElement('div', { className: 'flex-1 flex items-center justify-center' },
+          React.createElement('svg', { viewBox: `0 0 ${svgW} ${svgH}`, className: 'w-full max-h-[400px]' },
+            // Connections
+            ...CONNECTIONS.map(({ from, to }, i) => {
+              const p1 = FLOW_POSITIONS[from], p2 = FLOW_POSITIONS[to];
+              const agentFrom = AGENTS[from], agentTo = AGENTS[to];
+              const active = hasRecentHandshake(entries, agentFrom.id, agentTo.id);
+              return React.createElement('line', {
+                key: `conn-${i}`, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y,
+                stroke: active ? '#60a5fa' : '#3b3b5c', strokeWidth: active ? 2.5 : 1.5,
+                strokeDasharray: active ? 'none' : '6 4',
+                className: active ? 'pulse-anim' : '', opacity: active ? 1 : 0.5
+              });
+            }),
+            // Agent nodes
+            ...AGENTS.map((a, i) => {
+              const pos = FLOW_POSITIONS[i];
+              const status = getAgentStatus(a.id, entries);
+              const sty = STATUS_STYLES[status];
+              const online = onlineStatus[a.id];
+              const rw = 60, rh = 35;
+              return React.createElement('g', { key: a.id },
+                // Glow
+                status !== 'Idle' && React.createElement('rect', {
+                  x: pos.x - rw/2 - 3, y: pos.y - rh/2 - 3, width: rw + 6, height: rh + 6,
+                  rx: 10, fill: 'none', stroke: sty.fill, strokeWidth: 1.5, opacity: 0.4,
+                  className: status === 'Handshaking' || status === 'Processing' ? 'pulse-anim' : ''
+                }),
+                // Box
+                React.createElement('rect', {
+                  x: pos.x - rw/2, y: pos.y - rh/2, width: rw, height: rh,
+                  rx: 8, fill: '#1e1e2e', stroke: online ? a.color : '#555', strokeWidth: 2
+                }),
+                // Label
+                React.createElement('text', {
+                  x: pos.x, y: pos.y - 3, textAnchor: 'middle', fill: online ? a.color : '#888',
+                  fontSize: 11, fontWeight: 'bold', fontFamily: 'system-ui'
+                }, a.short),
+                // Status text
+                React.createElement('text', {
+                  x: pos.x, y: pos.y + 12, textAnchor: 'middle', fill: sty.fill,
+                  fontSize: 8, fontFamily: 'system-ui'
+                }, status),
+                // Online dot
+                React.createElement('circle', {
+                  cx: pos.x + rw/2 - 6, cy: pos.y - rh/2 + 6, r: 3,
+                  fill: online ? '#22c55e' : '#ef4444'
+                })
+              );
+            })
+          )
+        ),
+        // Legend
+        React.createElement('div', { className: 'flex flex-wrap gap-3 mt-3 text-xs text-slate-400 justify-center' },
+          ...Object.entries(STATUS_STYLES).map(([label, sty]) =>
+            React.createElement('div', { key: label, className: 'flex items-center gap-1' },
+              React.createElement('span', { className: 'inline-block w-2 h-2 rounded-full', style: { background: sty.fill } }),
+              label
+            )
+          )
+        )
+      );
+    }
+
+    // ── Audit Log (Center) ──────────────────────────────────
+    function AuditLog({ entries, chainValid }) {
+      const listRef = useRef(null);
+      const [autoScroll, setAutoScroll] = useState(true);
+      const prevCount = useRef(0);
+
+      useEffect(() => {
+        if (autoScroll && listRef.current && entries.length > prevCount.current) {
+          listRef.current.scrollTop = listRef.current.scrollHeight;
+        }
+        prevCount.current = entries.length;
+      }, [entries, autoScroll]);
+
+      function handleScroll(e) {
+        const el = e.target;
+        const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+        setAutoScroll(atBottom);
+      }
+
+      function fmtTime(ts) {
+        try { return new Date(ts).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+        catch { return ts; }
+      }
+
+      function truncHash(h) { return h ? h.slice(0, 10) + '…' : '—'; }
+
+      const agentMap = {};
+      AGENTS.forEach(a => { agentMap[a.id] = a; });
+
+      return React.createElement('div', { className: 'bg-card rounded-xl border border-border p-4 h-full flex flex-col' },
+        React.createElement('div', { className: 'flex items-center justify-between mb-3' },
+          React.createElement('h2', { className: 'text-lg font-semibold text-white flex items-center gap-2' }, '📋 Live Audit Log'),
+          React.createElement('div', { className: 'flex items-center gap-2' },
+            React.createElement('span', { className: `text-xs px-2 py-0.5 rounded-full font-medium ${chainValid === null ? 'bg-slate-700 text-slate-300' : chainValid ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}` },
+              chainValid === null ? '— chain' : chainValid ? '✓ chain valid' : '✗ chain broken'
+            ),
+            React.createElement('span', { className: 'text-xs text-slate-500' }, `${entries.length} entries`)
+          )
+        ),
+        React.createElement('div', {
+          ref: listRef, onScroll: handleScroll,
+          className: 'flex-1 overflow-y-auto space-y-2 scrollbar-thin pr-1',
+          style: { minHeight: 0 }
+        },
+          entries.length === 0
+            ? React.createElement('div', { className: 'text-slate-500 text-sm text-center py-8' }, 'No audit entries yet. Run a purchase to see events.')
+            : entries.map((e, i) => {
+                const ac = getActionColor(e.action);
+                const agent = agentMap[e.agent_id];
+                return React.createElement('div', {
+                  key: e.entry_id || i,
+                  className: `${ac.bg} border ${ac.border} rounded-lg px-3 py-2 fade-in`
+                },
+                  React.createElement('div', { className: 'flex items-center justify-between mb-1' },
+                    React.createElement('div', { className: 'flex items-center gap-2' },
+                      React.createElement('span', { className: `w-2 h-2 rounded-full ${ac.dot}` }),
+                      React.createElement('span', { className: `text-xs font-semibold ${agent ? agent.text : 'text-slate-300'}` }, agent ? agent.label : e.agent_id),
+                      React.createElement('span', { className: 'text-xs text-white font-mono bg-white/10 px-1.5 py-0.5 rounded' }, e.action)
+                    ),
+                    React.createElement('span', { className: 'text-xs text-slate-500 font-mono' }, fmtTime(e.timestamp))
+                  ),
+                  React.createElement('div', { className: 'flex items-center gap-3 text-[10px] text-slate-500 font-mono' },
+                    React.createElement('span', { title: e.hash }, '🔒 ', truncHash(e.hash)),
+                    React.createElement('span', { title: e.prev_hash }, '⛓ prev: ', truncHash(e.prev_hash))
+                  ),
+                  e.data && Object.keys(e.data).length > 0 && React.createElement('div', { className: 'text-[10px] text-slate-400 mt-1 font-mono truncate', title: JSON.stringify(e.data) },
+                    JSON.stringify(e.data).slice(0, 120)
+                  )
+                );
+              })
+        ),
+        !autoScroll && React.createElement('button', {
+          onClick: () => { setAutoScroll(true); if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight; },
+          className: 'mt-2 text-xs text-blue-400 hover:text-blue-300 text-center'
+        }, '↓ Scroll to latest')
+      );
+    }
+
+    // ── Trust Scores + Stats (Right) ────────────────────────
+    function TrustPanel({ trustScores, stats, lastUpdated }) {
+      const chartData = AGENTS.map(a => ({
+        name: a.label, score: trustScores[a.id] ?? 0, color: a.color
+      }));
+
+      function barColor(score) {
+        if (score >= 8) return '#22c55e';
+        if (score >= 5) return '#eab308';
+        return '#ef4444';
+      }
+
+      const statItems = [
+        { label: 'Total', value: stats.total ?? 0, color: 'text-white' },
+        { label: 'Success', value: stats.success ?? 0, color: 'text-green-400' },
+        { label: 'Failed', value: stats.failed ?? 0, color: 'text-red-400' },
+        { label: 'Rolled Back', value: stats.rolled_back ?? 0, color: 'text-yellow-400' },
+      ];
+
+      return React.createElement('div', { className: 'bg-card rounded-xl border border-border p-4 h-full flex flex-col' },
+        React.createElement('h2', { className: 'text-lg font-semibold text-white mb-3 flex items-center gap-2' }, '🛡️ Trust Scores'),
+
+        // Bar chart
+        React.createElement('div', { className: 'mb-4', style: { height: 200 } },
+          React.createElement(ResponsiveContainer, { width: '100%', height: '100%' },
+            React.createElement(BarChart, { data: chartData, margin: { top: 10, right: 10, left: -10, bottom: 5 } },
+              React.createElement(CartesianGrid, { strokeDasharray: '3 3', stroke: '#3b3b5c' }),
+              React.createElement(XAxis, { dataKey: 'name', tick: { fill: '#94a3b8', fontSize: 11 }, axisLine: { stroke: '#3b3b5c' } }),
+              React.createElement(YAxis, { domain: [0, 10], tick: { fill: '#94a3b8', fontSize: 11 }, axisLine: { stroke: '#3b3b5c' } }),
+              React.createElement(Tooltip, {
+                contentStyle: { background: '#282840', border: '1px solid #3b3b5c', borderRadius: 8, color: '#e2e8f0' },
+                formatter: (v) => [v, 'Trust Score']
+              }),
+              React.createElement(Bar, { dataKey: 'score', radius: [4, 4, 0, 0], maxBarSize: 40 },
+                chartData.map((d, i) =>
+                  React.createElement(Cell, { key: i, fill: barColor(d.score) })
+                )
+              )
+            )
+          )
+        ),
+
+        // Score list
+        React.createElement('div', { className: 'space-y-2 mb-5' },
+          ...AGENTS.map(a => {
+            const score = trustScores[a.id] ?? 0;
+            const pct = (score / 10) * 100;
+            return React.createElement('div', { key: a.id },
+              React.createElement('div', { className: 'flex justify-between text-xs mb-0.5' },
+                React.createElement('span', { className: `${a.text} font-medium` }, a.label),
+                React.createElement('span', { className: 'text-slate-400 font-mono' },
+                  score > 0 ? `${score.toFixed(1)}/10` : 'N/A'
+                )
+              ),
+              React.createElement('div', { className: 'h-1.5 bg-slate-700 rounded-full overflow-hidden' },
+                React.createElement('div', {
+                  className: 'h-full rounded-full transition-all duration-500',
+                  style: { width: `${pct}%`, background: barColor(score) }
+                })
+              )
+            );
+          })
+        ),
+
+        // Stats
+        React.createElement('h3', { className: 'text-sm font-semibold text-white mb-2 flex items-center gap-2' }, '📊 Transaction Stats'),
+        React.createElement('div', { className: 'grid grid-cols-2 gap-2 mb-4' },
+          ...statItems.map(s =>
+            React.createElement('div', { key: s.label, className: 'bg-surface rounded-lg px-3 py-2 text-center' },
+              React.createElement('div', { className: `text-xl font-bold ${s.color}` }, s.value),
+              React.createElement('div', { className: 'text-[10px] text-slate-500 uppercase tracking-wide' }, s.label)
+            )
+          )
+        ),
+
+        // Last updated
+        React.createElement('div', { className: 'mt-auto text-[10px] text-slate-600 text-center' },
+          'Last updated: ', lastUpdated || '—'
+        )
+      );
+    }
+
+    // ── App ─────────────────────────────────────────────────
+    function App() {
+      const [entries, setEntries] = useState([]);
+      const [chainValid, setChainValid] = useState(null);
+      const [stats, setStats] = useState({});
+      const [trustScores, setTrustScores] = useState({});
+      const [agentStatus, setAgentStatus] = useState({});
+      const [lastUpdated, setLastUpdated] = useState(null);
+
+      const poll = useCallback(async () => {
+        // Audit log
+        const audit = await safeFetch('http://localhost:8000/audit');
+        if (audit) {
+          setEntries(audit.entries || []);
+          setChainValid(audit.chain_valid ?? null);
+          setAgentStatus(prev => ({ ...prev, 'copilot-orchestrator': true }));
+        } else {
+          setAgentStatus(prev => ({ ...prev, 'copilot-orchestrator': false }));
+        }
+
+        // Stats
+        const st = await safeFetch('http://localhost:8000/stats');
+        if (st) setStats(st);
+
+        // Sidecar metrics for trust scores
+        const sidecarPorts = { 'copilot-orchestrator': 8001, 'payment-agent': 8011, 'amazon-agent': 8021, 'shipping-agent': 8031 };
+        const newScores = {};
+        const newStatus = {};
+
+        await Promise.all(AGENTS.map(async (a) => {
+          const port = sidecarPorts[a.id];
+          const metrics = await safeFetch(`http://localhost:${port}/metrics`);
+          if (metrics) {
+            newScores[a.id] = metrics.trust_score ?? metrics.score ?? 0;
+            newStatus[a.id] = true;
+          } else {
+            // Try health endpoint as fallback
+            const health = await safeFetch(`http://localhost:${a.port}/health`);
+            newStatus[a.id] = !!health;
+            // Extract trust scores from audit entries if available
+            if (audit && audit.entries) {
+              const hs = [...(audit.entries || [])].reverse().find(e =>
+                e.action?.toLowerCase().includes('handshake') &&
+                (JSON.stringify(e.data || '').includes(a.id) || e.agent_id === a.id)
+              );
+              if (hs && hs.data) {
+                newScores[a.id] = hs.data.trust_score ?? hs.data.score ?? 0;
+              }
+            }
+          }
+        }));
+
+        setTrustScores(prev => ({ ...prev, ...newScores }));
+        setAgentStatus(prev => ({ ...prev, ...newStatus }));
+        setLastUpdated(new Date().toLocaleTimeString());
+      }, []);
+
+      useEffect(() => {
+        poll();
+        const id = setInterval(poll, POLL_MS);
+        return () => clearInterval(id);
+      }, [poll]);
+
+      return React.createElement('div', { className: 'min-h-screen flex flex-col text-slate-200' },
+        React.createElement(Header, { agentStatus }),
+        React.createElement('main', { className: 'flex-1 grid grid-cols-1 lg:grid-cols-[300px_1fr_320px] gap-4 p-4', style: { minHeight: 0, maxHeight: 'calc(100vh - 120px)' } },
+          React.createElement(TransactionFlow, { entries, agentStatus }),
+          React.createElement(AuditLog, { entries, chainValid }),
+          React.createElement(TrustPanel, { trustScores, stats, lastUpdated })
+        ),
+        React.createElement('footer', { className: 'bg-card border-t border-border px-6 py-2 text-center text-xs text-slate-600' },
+          'Powered by Agent-OS IATP • Agent-Mesh Trust Layer'
+        )
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(App));
+  </script>
+</body>
+</html>

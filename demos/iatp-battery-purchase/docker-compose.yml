@@ -1,0 +1,147 @@
+version: "3.8"
+
+networks:
+  iatp-demo-net:
+    driver: bridge
+
+services:
+  # ---- Copilot Orchestrator ----
+  copilot-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: copilot-agent
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - PAYMENT_SIDECAR_URL=http://payment-sidecar:8011
+      - AMAZON_SIDECAR_URL=http://amazon-sidecar:8021
+      - SHIPPING_SIDECAR_URL=http://shipping-sidecar:8031
+    command: ["uvicorn", "agent:app", "--host", "0.0.0.0", "--port", "8000", "--app-dir", "/app/agents/copilot"]
+    networks:
+      - iatp-demo-net
+
+  copilot-sidecar:
+    build:
+      context: ../../modules/iatp
+      dockerfile: Dockerfile
+    container_name: copilot-sidecar
+    ports:
+      - "8001:8081"
+    environment:
+      - IATP_AGENT_URL=http://copilot-agent:8000
+      - IATP_PORT=8081
+      - IATP_AGENT_ID=copilot-orchestrator
+      - IATP_TRUST_LEVEL=verified_partner
+      - IATP_REVERSIBILITY=full
+      - IATP_RETENTION=ephemeral
+    networks:
+      - iatp-demo-net
+
+  # ---- Payment Agent ----
+  payment-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: payment-agent
+    ports:
+      - "8010:8010"
+    environment:
+      - PORT=8010
+      - PAYMENT_FAIL_RATE=0.0
+    command: ["uvicorn", "agent:app", "--host", "0.0.0.0", "--port", "8010", "--app-dir", "/app/agents/payment"]
+    networks:
+      - iatp-demo-net
+
+  payment-sidecar:
+    build:
+      context: ../../modules/iatp
+      dockerfile: Dockerfile
+    container_name: payment-sidecar
+    ports:
+      - "8011:8081"
+    environment:
+      - IATP_AGENT_URL=http://payment-agent:8010
+      - IATP_PORT=8081
+      - IATP_AGENT_ID=payment-processor
+      - IATP_TRUST_LEVEL=verified_partner
+      - IATP_REVERSIBILITY=full
+      - IATP_RETENTION=temporary
+    networks:
+      - iatp-demo-net
+
+  # ---- Amazon Marketplace Agent ----
+  amazon-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: amazon-agent
+    ports:
+      - "8020:8020"
+    environment:
+      - PORT=8020
+      - SHIPPING_SIDECAR_URL=http://shipping-sidecar:8081
+      - INVENTORY_FAIL=false
+    command: ["uvicorn", "agent:app", "--host", "0.0.0.0", "--port", "8020", "--app-dir", "/app/agents/amazon"]
+    networks:
+      - iatp-demo-net
+
+  amazon-sidecar:
+    build:
+      context: ../../modules/iatp
+      dockerfile: Dockerfile
+    container_name: amazon-sidecar
+    ports:
+      - "8021:8081"
+    environment:
+      - IATP_AGENT_URL=http://amazon-agent:8020
+      - IATP_PORT=8081
+      - IATP_AGENT_ID=amazon-marketplace
+      - IATP_TRUST_LEVEL=trusted
+      - IATP_REVERSIBILITY=full
+      - IATP_RETENTION=temporary
+    networks:
+      - iatp-demo-net
+
+  # ---- Shipping Agent ----
+  shipping-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: shipping-agent
+    ports:
+      - "8030:8030"
+    environment:
+      - PORT=8030
+    command: ["uvicorn", "agent:app", "--host", "0.0.0.0", "--port", "8030", "--app-dir", "/app/agents/shipping"]
+    networks:
+      - iatp-demo-net
+
+  shipping-sidecar:
+    build:
+      context: ../../modules/iatp
+      dockerfile: Dockerfile
+    container_name: shipping-sidecar
+    ports:
+      - "8031:8081"
+    environment:
+      - IATP_AGENT_URL=http://shipping-agent:8030
+      - IATP_PORT=8081
+      - IATP_AGENT_ID=shipping-carrier
+      - IATP_TRUST_LEVEL=trusted
+      - IATP_REVERSIBILITY=none
+      - IATP_RETENTION=ephemeral
+    networks:
+      - iatp-demo-net
+
+  # ---- Dashboard (placeholder) ----
+  dashboard:
+    image: nginx:alpine
+    container_name: iatp-dashboard
+    ports:
+      - "3000:80"
+    volumes:
+      - ./dashboard/public:/usr/share/nginx/html:ro
+    networks:
+      - iatp-demo-net
