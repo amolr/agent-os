@@ -45,7 +45,7 @@ try:
     from caas import __version__ as CAAS_VERSION
     from caas.routing.heuristic_router import HeuristicRouter
     from caas.triad import ContextTriadManager
-    from caas.decay import TimeDecayCalculator
+    from caas.decay import calculate_decay_factor
     from caas.models import ModelTier
 
     CAAS_AVAILABLE = True
@@ -303,14 +303,12 @@ def benchmark_decay_calculator(
     Returns:
         MetricResult with timing statistics.
     """
-    calculator = TimeDecayCalculator()
-
     # Generate random ages (in hours)
     ages = np.random.exponential(scale=24, size=n_items)
 
     start = time.perf_counter()
     for age in ages:
-        calculator.calculate_decay(float(age))
+        calculate_decay_factor(float(age))
     elapsed = (time.perf_counter() - start) * 1000
 
     return MetricResult(
